@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel Admin — Geoportal APS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    :root{
+      --az:#1565c0;--sky:#1e88e5;
+      --verde:#10b981;--naranja:#f59e0b;--rojo:#ef4444;--morado:#7c3aed;
+      --bg:#0f172a;--card:#1e293b;--card2:#273548;--txt:#e2e8f0;--txt2:#94a3b8;
+      --border:rgba(99,179,255,0.12);--hh:58px;
+    }
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{min-height:100vh;background:var(--bg);font-family:'DM Sans',sans-serif;color:var(--txt)}
+
+    /* SPLASH / ACCESO DENEGADO */
+    #splash{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-size:13px;color:var(--txt2)}
+    #splash .sl{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#1565c0,#0ea5e9);display:flex;align-items:center;justify-content:center;font-size:26px}
+    #splash .sr{width:24px;height:24px;border:2.5px solid rgba(99,179,255,0.2);border-top-color:#60a5fa;border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    #accesoDenegado{position:fixed;inset:0;z-index:9999;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:32px}
+    #accesoDenegado .icon{font-size:56px}
+    #accesoDenegado h2{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#f87171}
+    #accesoDenegado p{font-size:14px;color:var(--txt2);max-width:380px;line-height:1.6}
+    #accesoDenegado a{margin-top:8px;padding:10px 24px;background:rgba(99,179,255,0.1);border:1px solid rgba(99,179,255,0.25);border-radius:9px;color:#60a5fa;text-decoration:none;font-size:13px;font-weight:500}
+
+    /* HEADER */
+    .hdr{position:sticky;top:0;z-index:200;height:var(--hh);background:rgba(15,23,42,0.95);border-bottom:1px solid var(--border);backdrop-filter:blur(20px);display:flex;align-items:center;padding:0 20px;gap:14px}
+    .hdr-logo{display:flex;align-items:center;gap:10px}
+    .hdr-ico{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1565c0,#0ea5e9);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+    .hdr-name{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--txt)}
+    .hdr-sub{font-size:10px;color:var(--txt2);display:block}
+    .admin-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:100px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;font-size:10px;font-weight:600;letter-spacing:.04em}
+    .hdr-sp{flex:1}
+    .hdr-user{font-size:12px;color:var(--txt2);display:flex;align-items:center;gap:8px}
+    .btn-logout{padding:6px 14px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;color:#f87171;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
+    .btn-logout:hover{background:rgba(239,68,68,0.25)}
+
+    /* PÁGINA */
+    .page{max-width:1100px;margin:0 auto;padding:24px 20px 56px}
+    .page-title{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-0.03em;color:var(--txt);margin-bottom:4px}
+    .page-sub{font-size:13px;color:var(--txt2);margin-bottom:24px}
+
+    /* KPIs */
+    .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px}
+    @media(max-width:700px){.kpis{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:440px){.kpis{grid-template-columns:repeat(2,1fr)}}
+    .kpi{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 14px;display:flex;flex-direction:column;gap:4px}
+    .kpi-ico{font-size:22px;margin-bottom:3px}
+    .kpi-val{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#60a5fa;letter-spacing:-0.03em;line-height:1}
+    .kpi-lbl{font-size:10px;color:var(--txt2)}
+
+    /* SECCIONES */
+    .seccion{background:var(--card);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden}
+    .sec-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:15px 20px 13px;border-bottom:1px solid var(--border)}
+    .sec-titulo{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--txt);display:flex;align-items:center;gap:8px}
+    .sec-badge{font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(96,165,250,0.15);color:#60a5fa;font-weight:600}
+    .sec-body{padding:16px 20px}
+    .export-row{display:flex;gap:8px;flex-wrap:wrap}
+    .btn-exp{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;border:1px solid;white-space:nowrap}
+    .btn-exp.csv{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.3);color:#34d399}
+    .btn-exp.csv:hover{background:rgba(16,185,129,0.2)}
+    .btn-exp.reload{background:rgba(96,165,250,0.1);border-color:rgba(96,165,250,0.25);color:#60a5fa}
+    .btn-exp.reload:hover{background:rgba(96,165,250,0.2)}
+    .btn-exp.danger{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.3);color:#f87171}
+    .btn-exp.danger:hover{background:rgba(239,68,68,0.2)}
+
+    /* FILTROS */
+    .filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .filtro-sel{padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:9px;color:var(--txt);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;cursor:pointer;min-height:40px}
+    .filtro-sel:focus{border-color:#60a5fa}
+    .filtro-sel option{background:#1e293b;color:#e2e8f0}
+
+    /* TABLA */
+    .tabla-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:10px;border:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead tr{background:rgba(96,165,250,0.08)}
+    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--txt2);white-space:nowrap}
+    td{padding:10px 12px;border-top:1px solid var(--border);color:var(--txt);vertical-align:middle}
+    tr:hover td{background:rgba(96,165,250,0.04)}
+    .empty-row td{text-align:center;padding:32px;color:var(--txt2);font-size:13px}
+
+    /* BADGES */
+    .td-badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:100px;font-size:10px;font-weight:600;white-space:nowrap}
+    .td-badge.insert{background:rgba(16,185,129,0.15);color:#34d399;border:1px solid rgba(16,185,129,0.3)}
+    .td-badge.update{background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.3)}
+    .td-badge.delete{background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3)}
+
+    /* CARD TÉCNICO */
+    .user-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+    .user-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;gap:12px;align-items:flex-start;transition:border-color .2s}
+    .user-card:hover{border-color:rgba(96,165,250,0.3)}
+    .avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;font-family:'Syne',sans-serif}
+    .user-info{flex:1;min-width:0}
+    .user-email{font-size:13px;font-weight:600;color:var(--txt);word-break:break-all}
+    .user-stats{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px}
+    .u-stat{font-size:11px;color:var(--txt2);display:flex;align-items:center;gap:4px}
+    .u-stat.green{color:#34d399}
+    .u-stat.orange{color:#fbbf24}
+    .u-stat.red{color:#f87171}
+    .user-last{font-size:10px;color:var(--txt2);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+    .online-dot{width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 6px #34d399;display:inline-block;margin-right:4px}
+    .inactive-dot{width:8px;height:8px;border-radius:50%;background:var(--txt2);display:inline-block;margin-right:4px}
+
+    /* TIMELINE */
+    .tl-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid rgba(99,179,255,0.06)}
+    .tl-item:last-child{border-bottom:none}
+    .tl-dot{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+    .tl-dot.insert{background:rgba(16,185,129,0.15)}
+    .tl-dot.update{background:rgba(245,158,11,0.15)}
+    .tl-dot.delete{background:rgba(239,68,68,0.15)}
+    .tl-body{flex:1;min-width:0}
+    .tl-desc{font-size:13px;color:var(--txt);line-height:1.4}
+    .tl-meta{display:flex;gap:10px;margin-top:3px;flex-wrap:wrap}
+    .tl-meta span{font-size:11px;color:var(--txt2)}
+
+    /* GRÁFICA */
+    .graficas{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+    @media(max-width:640px){.graficas{grid-template-columns:1fr}}
+    .chart-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px}
+    .chart-titulo{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--txt);margin-bottom:14px}
+    .chart-canvas-wrap{position:relative;height:200px}
+
+    /* LOADING */
+    .sec-loading{display:flex;align-items:center;justify-content:center;gap:10px;padding:32px;color:var(--txt2);font-size:13px}
+    .sec-loading .ring{width:20px;height:20px;border:2.5px solid rgba(99,179,255,0.15);border-top-color:#60a5fa;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+
+    /* PAGINACIÓN */
+    .pag{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 20px;border-top:1px solid var(--border);font-size:12px;color:var(--txt2)}
+    .pag-btns{display:flex;gap:6px}
+    .pag-btn{padding:5px 12px;border:1px solid var(--border);border-radius:7px;background:var(--card2);color:#60a5fa;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
+    .pag-btn:hover{background:rgba(96,165,250,0.1)}
+    .pag-btn:disabled{opacity:.3;cursor:not-allowed}
+
+    /* TOAST */
+    #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(30,41,59,0.96);color:var(--txt);padding:10px 20px;border-radius:100px;font-size:13px;z-index:9999;display:none;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);white-space:nowrap;max-width:92vw;border:1px solid var(--border);backdrop-filter:blur(12px)}
+    #toast.on{display:flex;animation:tin .3s ease}
+    @keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+    @media(max-width:480px){
+      .page{padding:14px 12px 40px}
+      .sec-body{padding:12px}
+      .sec-hdr{padding:12px}
+      th,td{padding:8px 8px}
+    }
+  </style>
+</head>
+<body>
+
+<!-- SPLASH CARGA -->
+<div id="splash">
+  <div class="sl">🔒</div>
+  <div class="sr"></div>
+  Verificando acceso…
+</div>
+
+<!-- ACCESO DENEGADO -->
+<div id="accesoDenegado">
+  <div class="icon">🚫</div>
+  <h2>Acceso restringido</h2>
+  <p>Este panel es exclusivo para el administrador del Geoportal APS.<br>Si crees que es un error, contacta a Diego Castaño.</p>
+  <a href="index.html">← Volver al inicio</a>
+</div>
+
+<!-- HEADER -->
+<header class="hdr" id="headerAdmin" style="display:none">
+  <div class="hdr-logo">
+    <div class="hdr-ico">🔒</div>
+    <div>
+      <div class="hdr-name">Panel de Administrador</div>
+      <span class="hdr-sub">Geoportal APS · Solo acceso autorizado</span>
+    </div>
+  </div>
+  <span class="admin-badge">⭐ ADMIN</span>
+  <div class="hdr-sp"></div>
+  <div class="hdr-user">
+    <span id="adminEmail">—</span>
+    <button class="btn-logout" onclick="doLogout()">Salir</button>
+  </div>
+</header>
+
+<!-- PANEL PRINCIPAL -->
+<main class="page" id="mainPage" style="display:none">
+
+  <div class="page-title">🔒 Panel de Administrador</div>
+  <p class="page-sub">Control total de usuarios técnicos y toda su actividad en el Geoportal APS</p>
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-ico">👥</div><div class="kpi-val" id="kpi-tecnicos">—</div><div class="kpi-lbl">Técnicos activos</div></div>
+    <div class="kpi"><div class="kpi-ico">📊</div><div class="kpi-val" id="kpi-acciones">—</div><div class="kpi-lbl">Acciones totales</div></div>
+    <div class="kpi"><div class="kpi-ico">➕</div><div class="kpi-val" id="kpi-inserts">—</div><div class="kpi-lbl">Registros nuevos</div></div>
+    <div class="kpi"><div class="kpi-ico">✏️</div><div class="kpi-val" id="kpi-updates">—</div><div class="kpi-lbl">Ediciones</div></div>
+    <div class="kpi"><div class="kpi-ico">🗑️</div><div class="kpi-val" id="kpi-deletes">—</div><div class="kpi-lbl">Eliminaciones</div></div>
+  </div>
+
+  <!-- GRÁFICAS -->
+  <div class="graficas">
+    <div class="chart-card">
+      <div class="chart-titulo">📊 Acciones por técnico</div>
+      <div class="chart-canvas-wrap"><canvas id="chartTecnicos"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-titulo">📅 Actividad por día (últimos 14 días)</div>
+      <div class="chart-canvas-wrap"><canvas id="chartDias"></canvas></div>
+    </div>
+  </div>
+
+  <!-- RESUMEN TÉCNICOS -->
+  <div class="seccion">
+    <div class="sec-hdr">
+      <div class="sec-titulo">👤 Estado de técnicos <span class="sec-badge" id="badge-tecnicos">0</span></div>
+      <div class="export-row">
+        <button class="btn-exp reload" onclick="cargarTodo()">🔄 Actualizar</button>
+        <button class="btn-exp csv" onclick="exportarCSV('tecnicos')">⬇ CSV técnicos</button>
+      </div>
+    </div>
+    <div class="sec-body">
+      <div id="panel-tecnicos" class="user-grid">
+        <div class="sec-loading" style="grid-column:1/-1"><div class="ring"></div>Cargando…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TIMELINE COMPLETA -->
+  <div class="seccion">
+    <div class="sec-hdr">
+      <div class="sec-titulo">🕐 Registro de actividad <span class="sec-badge" id="badge-actividad">0</span></div>
+      <div class="export-row">
+        <button class="btn-exp csv" onclick="exportarCSV('auditoria')">⬇ CSV completo</button>
+      </div>
+    </div>
+    <div class="sec-body">
+      <div class="filtros">
+        <select class="filtro-sel" id="fil-user" onchange="filtrarTimeline()">
+          <option value="">Todos los técnicos</option>
+        </select>
+        <select class="filtro-sel" id="fil-accion" onchange="filtrarTimeline()">
+          <option value="">Todas las acciones</option>
+          <option value="INSERT">Registros nuevos (➕)</option>
+          <option value="UPDATE">Ediciones (✏️)</option>
+          <option value="DELETE">Eliminaciones (🗑️)</option>
+        </select>
+        <select class="filtro-sel" id="fil-tabla" onchange="filtrarTimeline()">
+          <option value="">Todas las tablas</option>
+          <option value="predios">🏞️ Predios</option>
+          <option value="usos_suelo">🌾 Usos de suelo</option>
+          <option value="sbn_puntual">📍 APS Puntual</option>
+          <option value="sbn_lineal">〰️ APS Lineal</option>
+          <option value="sbn_poligonal">⬡ APS Poligonal</option>
+          <option value="reportes_sbn">📋 Reportes campo</option>
+        </select>
+      </div>
+      <div id="panel-timeline">
+        <div class="sec-loading"><div class="ring"></div>Cargando…</div>
+      </div>
+      <div id="pag-timeline" class="pag" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- TABLA DETALLE COMPLETA -->
+  <div class="seccion">
+    <div class="sec-hdr">
+      <div class="sec-titulo">📋 Detalle completo <span class="sec-badge" id="badge-tabla">0</span></div>
+    </div>
+    <div class="sec-body" style="padding:0">
+      <div id="tabla-audit-wrap" class="tabla-wrap">
+        <div class="sec-loading"><div class="ring"></div>Cargando…</div>
+      </div>
+      <div id="pag-tabla" class="pag" style="display:none"></div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════
+   SUPABASE + ADMIN AUTH
+   Solo permite acceso a diego.castano@biocomerciosostenible.org
+══════════════════════════════════════════════ */
+const SB_URL  = "https://nyqzlkfphssodbsgeeob.supabase.co";
+const SB_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55cXpsa2ZwaHNzb2Ric2dlZW9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMzg5ODAsImV4cCI6MjA4OTcxNDk4MH0.D0mv8NNf3w362u1Q9PRcy9H_vO46u6jIva3SpMaKLng";
+const sb      = window.supabase.createClient(SB_URL, SB_KEY);
+
+/* Único email con acceso al panel */
+const ADMIN_EMAIL = 'diego.castano@biocomerciosostenible.org';
+
+(async function() {
+  try {
+    var s = await sb.auth.getSession();
+    var session = s.data?.session;
+
+    if (!session) {
+      // No hay sesión — redirigir al login
+      window.location.replace('index.html');
+      return;
+    }
+
+    var email = session.user?.email || '';
+
+    if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+      // Sesión válida pero NO es el admin
+      document.getElementById('splash').style.display = 'none';
+      document.getElementById('accesoDenegado').style.display = 'flex';
+      return;
+    }
+
+    // ✅ Es el admin — mostrar panel
+    document.getElementById('splash').style.display     = 'none';
+    document.getElementById('headerAdmin').style.display = 'flex';
+    document.getElementById('mainPage').style.display    = 'block';
+    document.getElementById('adminEmail').textContent    = email;
+    cargarTodo();
+
+  } catch(e) {
+    window.location.replace('index.html');
+  }
+})();
+
+async function doLogout() {
+  await sb.auth.signOut().catch(function(){});
+  window.location.replace('index.html');
+}
+
+/* ══════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════ */
+var _tt = null;
+function toast(msg, persist) {
+  var t = document.getElementById('toast');
+  t.innerHTML = msg; t.classList.add('on');
+  clearTimeout(_tt);
+  if (!persist) _tt = setTimeout(function(){ t.classList.remove('on'); }, 3500);
+}
+function esc(s) {
+  if (!s && s !== 0) return '—';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function csvQ(s) {
+  if (!s && s !== 0) return '';
+  return '"' + String(s).replace(/"/g, "''") + '"';
+}
+function gfecha(row) { return row.fecha_hora || row.created_at || row.fecha || ''; }
+function fmtFH(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  catch(e) { return String(iso).slice(0,16); }
+}
+function fmtF(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}); }
+  catch(e) { return String(iso).slice(0,10); }
+}
+function hoy() { return new Date().toISOString().slice(0,10); }
+
+/* Avatares */
+var ACOLORS = ['#1565c0','#10b981','#f59e0b','#7c3aed','#ef4444','#0891b2','#059669','#d97706','#6d28d9'];
+function aColor(email) {
+  var n = 0; if (email) for(var i=0;i<email.length;i++) n+=email.charCodeAt(i);
+  return ACOLORS[n % ACOLORS.length];
+}
+function initials(email) {
+  if (!email) return '?';
+  var parts = email.split('@')[0].split(/[._\-]/);
+  if (parts.length >= 2) return (parts[0][0]+parts[1][0]).toUpperCase();
+  return email.slice(0,2).toUpperCase();
+}
+
+/* Iconos tabla */
+var TABLA_ICO = { predios:'🏞️', usos_suelo:'🌾', sbn_puntual:'📍', sbn_lineal:'〰️', sbn_poligonal:'⬡', reportes_sbn:'📋' };
+
+/* ══════════════════════════════════════════════
+   DATOS
+══════════════════════════════════════════════ */
+var dataAudit = [];
+var _auditFil = [];
+var pagTimeline = 1, pagTabla = 1;
+var PT = 15, PTA = 25;
+var chartT = null, chartD = null;
+
+/* ══════════════════════════════════════════════
+   CARGA DE DATOS
+══════════════════════════════════════════════ */
+async function cargarTodo() {
+  ['panel-tecnicos','panel-timeline','tabla-audit-wrap'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="sec-loading" style="grid-column:1/-1"><div class="ring"></div>Cargando…</div>';
+  });
+
+  try {
+    var r = await sb.from('auditoria_usuarios').select('*');
+    if (r.error) throw r.error;
+    dataAudit = (r.data || []).sort(function(a,b){
+      return new Date(b.fecha_hora||b.created_at||0) - new Date(a.fecha_hora||a.created_at||0);
+    });
+  } catch(e) {
+    console.error(e);
+    toast('❌ Error: ' + e.message);
+    dataAudit = [];
+  }
+
+  _auditFil = dataAudit;
+  pagTimeline = 1; pagTabla = 1;
+
+  actualizarKPIs();
+  poblarFiltros();
+  renderTecnicos();
+  renderTimeline(_auditFil);
+  renderTablaDetalle(_auditFil);
+  renderGraficas();
+
+  toast('✅ ' + dataAudit.length + ' registros de auditoría cargados');
+}
+
+/* ══════════════════════════════════════════════
+   KPIs
+══════════════════════════════════════════════ */
+function actualizarKPIs() {
+  var emails = dataAudit.map(function(a){ return a.email; }).filter(Boolean);
+  var uniqEmails = emails.filter(function(e,i){ return emails.indexOf(e)===i; });
+  document.getElementById('kpi-tecnicos').textContent = uniqEmails.length;
+  document.getElementById('kpi-acciones').textContent = dataAudit.length;
+  document.getElementById('kpi-inserts').textContent  = dataAudit.filter(function(a){ return a.accion==='INSERT'; }).length;
+  document.getElementById('kpi-updates').textContent  = dataAudit.filter(function(a){ return a.accion==='UPDATE'; }).length;
+  document.getElementById('kpi-deletes').textContent  = dataAudit.filter(function(a){ return a.accion==='DELETE'; }).length;
+}
+
+/* ══════════════════════════════════════════════
+   FILTROS
+══════════════════════════════════════════════ */
+function poblarFiltros() {
+  var emails = dataAudit.map(function(a){ return a.email; }).filter(Boolean);
+  emails = emails.filter(function(e,i){ return emails.indexOf(e)===i; }).sort();
+  var sel = document.getElementById('fil-user');
+  var prev = sel.value;
+  sel.innerHTML = '<option value="">Todos los técnicos</option>' +
+    emails.map(function(e){ return '<option value="'+esc(e)+'">'+esc(e)+'</option>'; }).join('');
+  if (prev) sel.value = prev;
+}
+
+function filtrarTimeline() {
+  var user   = document.getElementById('fil-user').value;
+  var accion = document.getElementById('fil-accion').value;
+  var tabla  = document.getElementById('fil-tabla').value;
+  _auditFil = dataAudit.filter(function(a){
+    if (user   && a.email  !== user)   return false;
+    if (accion && a.accion !== accion) return false;
+    if (tabla  && a.tabla  !== tabla)  return false;
+    return true;
+  });
+  pagTimeline = 1; pagTabla = 1;
+  renderTimeline(_auditFil);
+  renderTablaDetalle(_auditFil);
+}
+
+/* ══════════════════════════════════════════════
+   CARDS DE TÉCNICOS
+══════════════════════════════════════════════ */
+function renderTecnicos() {
+  var byUser = {};
+  dataAudit.forEach(function(a) {
+    var k = a.email || 'desconocido';
+    if (!byUser[k]) byUser[k] = { email:k, total:0, inserts:0, updates:0, deletes:0, ultima:null };
+    byUser[k].total++;
+    if (a.accion==='INSERT') byUser[k].inserts++;
+    if (a.accion==='UPDATE') byUser[k].updates++;
+    if (a.accion==='DELETE') byUser[k].deletes++;
+    var f = new Date(a.fecha_hora||a.created_at||0);
+    if (!byUser[k].ultima || f > byUser[k].ultima) byUser[k].ultima = f;
+  });
+
+  var usuarios = Object.values(byUser).sort(function(a,b){ return b.total-a.total; });
+  document.getElementById('badge-tecnicos').textContent = usuarios.length;
+
+  if (!usuarios.length) {
+    document.getElementById('panel-tecnicos').innerHTML =
+      '<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--txt2);font-size:13px">Sin actividad registrada aún.<br>La auditoría registra acciones desde que ejecutaste el script SQL.</div>';
+    return;
+  }
+
+  var ahora = new Date();
+  var html = usuarios.map(function(u) {
+    var col = aColor(u.email);
+    var ini = initials(u.email);
+    var ultimaStr = u.ultima ? fmtFH(u.ultima.toISOString()) : 'Nunca';
+    // Considerar "activo hoy" si su última acción fue en las últimas 24h
+    var activo = u.ultima && (ahora - u.ultima) < 86400000;
+    return '<div class="user-card">' +
+      '<div class="avatar" style="background:'+col+'">'+ini+'</div>' +
+      '<div class="user-info">' +
+        '<div class="user-email">'+esc(u.email)+'</div>' +
+        '<div class="user-stats">' +
+          '<span class="u-stat green">➕ '+u.inserts+' nuevos</span>' +
+          (u.updates ? '<span class="u-stat orange">✏️ '+u.updates+' edits</span>' : '') +
+          (u.deletes ? '<span class="u-stat red">🗑 '+u.deletes+' elim.</span>' : '') +
+          '<span class="u-stat">📊 '+u.total+' total</span>' +
+        '</div>' +
+        '<div class="user-last">' +
+          (activo ? '<span class="online-dot"></span>Activo hoy' : '<span class="inactive-dot"></span>') +
+          ' Última acción: '+ultimaStr+
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  document.getElementById('panel-tecnicos').innerHTML = html;
+}
+
+/* ══════════════════════════════════════════════
+   TIMELINE
+══════════════════════════════════════════════ */
+function renderTimeline(arr) {
+  document.getElementById('badge-actividad').textContent = arr.length;
+  var panel = document.getElementById('panel-timeline');
+  if (!arr.length) {
+    panel.innerHTML = '<p style="text-align:center;padding:24px;color:var(--txt2);font-size:13px">Sin actividad con ese filtro</p>';
+    document.getElementById('pag-timeline').style.display='none'; return;
+  }
+
+  var rows = arr.slice((pagTimeline-1)*PT, pagTimeline*PT);
+  var ICONS = { INSERT:'➕', UPDATE:'✏️', DELETE:'🗑️' };
+
+  var html = rows.map(function(a) {
+    var cls = a.accion==='INSERT'?'insert':a.accion==='DELETE'?'delete':'update';
+    var ico = ICONS[a.accion] || '📌';
+    var col = aColor(a.email);
+    var ini = initials(a.email);
+    var tIco = TABLA_ICO[a.tabla] || '📄';
+    return '<div class="tl-item">' +
+      '<div class="tl-dot '+cls+'">'+ico+'</div>' +
+      '<div class="tl-body">' +
+        '<div class="tl-desc">'+esc(a.descripcion||(a.accion+' en '+a.tabla))+'</div>' +
+        '<div class="tl-meta">' +
+          '<span style="color:'+col+';font-weight:600">' +
+            '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:'+col+';color:#fff;font-size:8px;font-weight:700;margin-right:3px">'+ini+'</span>' +
+            esc(a.email||'?') +
+          '</span>' +
+          '<span>'+tIco+' '+esc(a.tabla||'—')+'</span>' +
+          '<span>🕐 '+fmtFH(gfecha(a))+'</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  panel.innerHTML = html;
+  renderPag('pag-timeline', arr.length, pagTimeline, PT,
+    'pagTimeline--;renderTimeline(_auditFil)',
+    'pagTimeline++;renderTimeline(_auditFil)');
+}
+
+/* ══════════════════════════════════════════════
+   TABLA DETALLE
+══════════════════════════════════════════════ */
+function renderTablaDetalle(arr) {
+  document.getElementById('badge-tabla').textContent = arr.length;
+  var wrap = document.getElementById('tabla-audit-wrap');
+  if (!arr.length) {
+    wrap.innerHTML = '<table><tbody><tr class="empty-row"><td colspan="6">Sin registros</td></tr></tbody></table>';
+    document.getElementById('pag-tabla').style.display='none'; return;
+  }
+  var rows = arr.slice((pagTabla-1)*PTA, pagTabla*PTA);
+  wrap.innerHTML = '<table>' +
+    '<thead><tr><th>#</th><th>Técnico</th><th>Acción</th><th>Tabla</th><th>Descripción</th><th>Fecha y hora</th></tr></thead>' +
+    '<tbody>' + rows.map(function(a,i){
+      var cls = a.accion==='INSERT'?'insert':a.accion==='DELETE'?'delete':'update';
+      var col = aColor(a.email);
+      return '<tr>' +
+        '<td style="color:var(--txt2);font-size:11px">'+((pagTabla-1)*PTA+i+1)+'</td>' +
+        '<td style="font-size:12px"><span style="display:inline-flex;align-items:center;gap:6px"><span style="width:22px;height:22px;border-radius:50%;background:'+col+';display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0">'+initials(a.email)+'</span>'+esc(a.email||'?')+'</span></td>' +
+        '<td><span class="td-badge '+cls+'">'+esc(a.accion)+'</span></td>' +
+        '<td style="font-size:12px">'+(TABLA_ICO[a.tabla]||'📄')+' '+esc(a.tabla||'—')+'</td>' +
+        '<td style="font-size:12px;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(a.descripcion)+'">'+esc(a.descripcion||'—')+'</td>' +
+        '<td style="font-size:11px;color:var(--txt2);white-space:nowrap">'+fmtFH(gfecha(a))+'</td>' +
+      '</tr>';
+    }).join('') + '</tbody></table>';
+  renderPag('pag-tabla', arr.length, pagTabla, PTA,
+    'pagTabla--;renderTablaDetalle(_auditFil)',
+    'pagTabla++;renderTablaDetalle(_auditFil)');
+}
+
+function renderPag(id, total, p, pp, prevCmd, nextCmd) {
+  var el = document.getElementById(id);
+  var tot = Math.ceil(total/pp);
+  if (tot<=1) { el.style.display='none'; return; }
+  el.style.display='flex';
+  var ini = (p-1)*pp+1, fin = Math.min(p*pp, total);
+  el.innerHTML = '<span>'+ini+'–'+fin+' de '+total+'</span>' +
+    '<div class="pag-btns">' +
+    '<button class="pag-btn" '+(p<=1?'disabled':'')+' onclick="'+prevCmd+';window.scrollBy({top:-400,behavior:\'smooth\'})">← Anterior</button>' +
+    '<button class="pag-btn" '+(p>=tot?'disabled':'')+' onclick="'+nextCmd+';window.scrollBy({top:-400,behavior:\'smooth\'})">Siguiente →</button>' +
+    '</div>';
+}
+
+/* ══════════════════════════════════════════════
+   GRÁFICAS
+══════════════════════════════════════════════ */
+function renderGraficas() {
+  /* Acciones por técnico */
+  var byUser = {};
+  dataAudit.forEach(function(a){
+    var k = a.email||'?'; byUser[k]=(byUser[k]||0)+1;
+  });
+  var usersSort = Object.entries(byUser).sort(function(a,b){ return b[1]-a[1]; }).slice(0,8);
+
+  if (chartT) chartT.destroy();
+  var ctxT = document.getElementById('chartTecnicos').getContext('2d');
+  if (usersSort.length) {
+    chartT = new Chart(ctxT, {
+      type:'bar',
+      data:{ labels:usersSort.map(function(e){ return e[0].split('@')[0]; }),
+        datasets:[{ data:usersSort.map(function(e){ return e[1]; }),
+          backgroundColor:usersSort.map(function(e){ return aColor(e[0]); }),
+          borderRadius:6, borderSkipped:false }] },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false} },
+        scales:{
+          x:{ grid:{display:false,color:'rgba(99,179,255,0.08)'}, ticks:{color:'rgba(226,232,240,0.6)',font:{size:10}} },
+          y:{ grid:{color:'rgba(99,179,255,0.08)'}, ticks:{color:'rgba(226,232,240,0.4)',font:{size:10}} }
+        }
+      }
+    });
+  }
+
+  /* Actividad por día (últimos 14 días) */
+  var dias = {};
+  for (var i=13; i>=0; i--) {
+    var d = new Date(); d.setDate(d.getDate()-i);
+    dias[d.toISOString().slice(0,10)] = 0;
+  }
+  dataAudit.forEach(function(a){
+    var f = gfecha(a);
+    if (f) { var k = f.slice(0,10); if (dias.hasOwnProperty(k)) dias[k]++; }
+  });
+  var diasLabels = Object.keys(dias).map(function(d){
+    return new Date(d+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short'});
+  });
+
+  if (chartD) chartD.destroy();
+  var ctxD = document.getElementById('chartDias').getContext('2d');
+  chartD = new Chart(ctxD, {
+    type:'line',
+    data:{ labels:diasLabels,
+      datasets:[{ data:Object.values(dias), borderColor:'#60a5fa',
+        backgroundColor:'rgba(96,165,250,0.1)', fill:true,
+        tension:0.4, pointRadius:3, pointBackgroundColor:'#60a5fa' }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'rgba(99,179,255,0.08)'}, ticks:{color:'rgba(226,232,240,0.6)',font:{size:10}} },
+        y:{ grid:{color:'rgba(99,179,255,0.08)'}, ticks:{color:'rgba(226,232,240,0.4)',font:{size:10},precision:0} }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════
+   EXPORTAR CSV
+══════════════════════════════════════════════ */
+function exportarCSV(tipo) {
+  var h, rows, fn;
+  if (tipo === 'tecnicos') {
+    var byUser = {};
+    dataAudit.forEach(function(a){
+      var k=a.email||'?';
+      if(!byUser[k]) byUser[k]={email:k,total:0,inserts:0,updates:0,deletes:0,ultima:''};
+      byUser[k].total++;
+      if(a.accion==='INSERT') byUser[k].inserts++;
+      if(a.accion==='UPDATE') byUser[k].updates++;
+      if(a.accion==='DELETE') byUser[k].deletes++;
+      var f=gfecha(a); if(f&&f>byUser[k].ultima) byUser[k].ultima=f;
+    });
+    h = 'Email,Registros_Nuevos,Ediciones,Eliminaciones,Total_Acciones,Ultima_Actividad';
+    rows = Object.values(byUser).map(function(u){
+      return [csvQ(u.email),u.inserts,u.updates,u.deletes,u.total,fmtFH(u.ultima)].join(',');
+    });
+    fn = 'Tecnicos_APS_' + hoy() + '.csv';
+  } else {
+    h = 'ID,Email,Accion,Tabla,ID_Registro,Descripcion,Fecha_Hora';
+    rows = dataAudit.map(function(a){
+      return [a.id,csvQ(a.email),csvQ(a.accion),csvQ(a.tabla),
+              a.registro_id||'',csvQ(a.descripcion),fmtFH(gfecha(a))].join(',');
+    });
+    fn = 'Auditoria_Completa_APS_' + hoy() + '.csv';
+  }
+  var csv  = '\ufeff' + h + '\n' + rows.join('\n');
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a'); a.href=url; a.download=fn;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); document.body.removeChild(a); }, 400);
+  toast('⬇ '+fn+' descargado ('+rows.length+' registros)');
+}
+</script>
+</body>
+</html>

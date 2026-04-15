@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geoportal APS — Sistema de Información Territorial</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300&family=Barlow+Condensed:wght@400;500;600;700;800&family=Source+Sans+3:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --green-deep:   #1b3a2d;
+      --green-mid:    #2d5a42;
+      --green-brand:  #2e7d52;
+      --green-vivid:  #3a9668;
+      --green-light:  #4caf7d;
+      --green-pale:   #e8f5ee;
+      --green-tint:   #f0f8f3;
+      --earth:        #7a5c3a;
+      --earth-light:  #c49a6c;
+      --coal:         #1a1f1c;
+      --ink:          #2c3530;
+      --slate:        #4a5550;
+      --mist:         #8a9a92;
+      --silver:       #c8d4cc;
+      --fog:          #e4ede8;
+      --white:        #f5f8f6;
+      --border:       rgba(46,125,82,0.18);
+      --border-dark:  rgba(46,125,82,0.35);
+    }
+
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box }
+    html, body { height:100%; font-family:'Source Sans 3', sans-serif; background:var(--green-tint); color:var(--ink); overflow:hidden }
+
+    /* ── ESTRUCTURA ── */
+    .shell { display:flex; height:100vh; }
+
+    /* ── PANEL IZQUIERDO — identidad institucional ── */
+    .left {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: var(--green-deep);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Mapa de fondo con efecto topográfico */
+    .left-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 120% 80% at 70% 110%, rgba(58,150,104,0.25) 0%, transparent 55%),
+        radial-gradient(ellipse 80% 60% at -10% 30%, rgba(46,125,82,0.3) 0%, transparent 50%),
+        linear-gradient(160deg, #0f2218 0%, #1b3a2d 45%, #1e4532 100%);
+    }
+
+    /* Curvas de nivel estilo topográfico */
+    .topo-lines {
+      position: absolute;
+      inset: 0;
+      opacity: 0.07;
+      background-image:
+        repeating-linear-gradient(
+          -35deg,
+          transparent,
+          transparent 28px,
+          rgba(76,175,125,0.5) 28px,
+          rgba(76,175,125,0.5) 29px
+        );
+    }
+    .topo-lines-2 {
+      position: absolute;
+      inset: 0;
+      opacity: 0.04;
+      background-image:
+        repeating-linear-gradient(
+          55deg,
+          transparent,
+          transparent 44px,
+          rgba(76,175,125,0.6) 44px,
+          rgba(76,175,125,0.6) 45px
+        );
+    }
+
+    /* Puntos de datos — efecto GIS */
+    .dots-layer {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .dot-node {
+      position: absolute;
+      border-radius: 50%;
+      background: var(--green-light);
+      animation: pulse-dot 3s ease-in-out infinite;
+    }
+    .dot-node::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 1px solid rgba(76,175,125,0.4);
+      animation: ripple-out 3s ease-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100%{ opacity:0.7; transform:scale(1); }
+      50%{ opacity:1; transform:scale(1.3); }
+    }
+    @keyframes ripple-out {
+      0%{ transform:scale(1); opacity:0.6; }
+      100%{ transform:scale(3.5); opacity:0; }
+    }
+
+    /* Líneas de conexión SVG entre puntos */
+    .connections {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    /* Contenido del panel izquierdo */
+    .left-content {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 0;
+    }
+
+    /* Header institucional */
+    .inst-header {
+      padding: 28px 36px 24px;
+      border-bottom: 1px solid rgba(76,175,125,0.12);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .inst-logo {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, var(--green-vivid), var(--green-light));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 4px 16px rgba(58,150,104,0.3);
+    }
+    .inst-names { flex: 1; min-width: 0; }
+    .inst-org {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--green-light);
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .inst-system {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.06em;
+      margin-top: 1px;
+    }
+
+    /* Hero del sistema */
+    .hero-block {
+      padding: 48px 36px 36px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .sys-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(58,150,104,0.15);
+      border: 1px solid rgba(76,175,125,0.3);
+      border-radius: 4px;
+      padding: 5px 12px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--green-light);
+      margin-bottom: 28px;
+      width: fit-content;
+    }
+    .sys-tag .tag-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green-light);
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .hero-title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: clamp(48px, 5.5vw, 72px);
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: -0.01em;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+    .hero-title .aps-accent {
+      color: var(--green-light);
+      display: block;
+    }
+    .hero-title .sub-word {
+      font-weight: 300;
+      font-style: italic;
+      color: rgba(255,255,255,0.55);
+      font-size: 0.65em;
+      letter-spacing: 0.02em;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .hero-desc {
+      font-size: 14px;
+      font-weight: 300;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.75;
+      max-width: 380px;
+      margin-bottom: 40px;
+    }
+
+    /* Stats institucionales */
+    .stats-row {
+      display: flex;
+      gap: 0;
+      border: 1px solid rgba(76,175,125,0.15);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.15);
+    }
+    .stat-cell {
+      flex: 1;
+      padding: 16px 20px;
+      border-right: 1px solid rgba(76,175,125,0.12);
+    }
+    .stat-cell:last-child { border-right: none; }
+    .stat-num {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--green-light);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-lbl {
+      font-size: 10px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 1.4;
+    }
+
+    /* Módulos del sistema */
+    .modules-bar {
+      padding: 20px 36px 28px;
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid rgba(76,175,125,0.1);
+    }
+    .mod-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(58,150,104,0.1);
+      border: 1px solid rgba(76,175,125,0.15);
+      border-radius: 4px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .mod-chip .mi { font-size: 13px; }
+    .mod-chip.active-mod {
+      background: rgba(58,150,104,0.2);
+      border-color: rgba(76,175,125,0.35);
+      color: var(--green-light);
+    }
+
+    /* ── PANEL DERECHO — formulario ── */
+    .right {
+      width: 420px;
+      flex-shrink: 0;
+      background: var(--white);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      box-shadow: -8px 0 40px rgba(0,0,0,0.08);
+    }
+
+    /* Top strip */
+    .right-top {
+      background: var(--green-deep);
+      padding: 20px 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .rt-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+    }
+    .rt-version {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--green-light);
+      letter-spacing: 0.1em;
+    }
+
+    /* Cuerpo del form */
+    .form-body {
+      padding: 36px 36px 32px;
+      flex: 1;
+    }
+
+    .form-greeting {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--green-deep);
+      letter-spacing: -0.01em;
+      margin-bottom: 4px;
+    }
+    .form-sub {
+      font-size: 13px;
+      color: var(--mist);
+      font-weight: 300;
+      margin-bottom: 32px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid var(--fog);
+      margin-bottom: 28px;
+      gap: 0;
+    }
+    .tab {
+      padding: 10px 20px 11px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--mist);
+      background: none;
+      border: none;
+      cursor: pointer;
+      position: relative;
+      transition: color .2s;
+    }
+    .tab::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0; right: 0;
+      height: 2px;
+      background: var(--green-brand);
+      transform: scaleX(0);
+      transition: transform .25s;
+    }
+    .tab.active { color: var(--green-deep); }
+    .tab.active::after { transform: scaleX(1); }
+    .tab:hover { color: var(--green-mid); }
+
+    /* Campos */
+    .fsect { display: none; flex-direction: column; gap: 18px; }
+    .fsect.show { display: flex; }
+
+    .fg { display: flex; flex-direction: column; gap: 6px; }
+    .fl {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--slate);
+    }
+    .fi {
+      background: var(--green-tint);
+      border: 1.5px solid var(--fog);
+      border-radius: 6px;
+      padding: 12px 14px;
+      color: var(--ink);
+      font-family: 'Source Sans 3', sans-serif;
+      font-size: 15px;
+      outline: none;
+      transition: border-color .2s, background .2s, box-shadow .2s;
+      -webkit-appearance: none;
+    }
+    .fi::placeholder { color: var(--silver); }
+    .fi:focus {
+      border-color: var(--green-brand);
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(46,125,82,0.1);
+    }
+
+    /* Botón principal */
+    .btn-main {
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--green-deep);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background .2s, transform .15s, box-shadow .2s;
+      box-shadow: 0 4px 16px rgba(27,58,45,0.25);
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-main::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .btn-main:hover {
+      background: var(--green-mid);
+      box-shadow: 0 6px 24px rgba(27,58,45,0.35);
+      transform: translateY(-1px);
+    }
+    .btn-main:active { transform: translateY(0); }
+    .btn-main:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    /* Divider */
+    .or-div {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--silver);
+      font-size: 11px;
+      font-family: 'Barlow Condensed', sans-serif;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .or-div::before, .or-div::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--fog);
+    }
+
+    /* Botón invitado */
+    .btn-guest {
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: 1.5px solid var(--fog);
+      border-radius: 6px;
+      color: var(--slate);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-guest:hover {
+      border-color: var(--green-brand);
+      color: var(--green-brand);
+      background: var(--green-pale);
+    }
+
+    /* Mensajes */
+    .msg {
+      padding: 10px 14px;
+      border-radius: 5px;
+      font-size: 13px;
+      display: none;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.5;
+    }
+    .msg.err {
+      background: rgba(183,28,28,0.06);
+      border-left: 3px solid #b71c1c;
+      color: #b71c1c;
+      display: flex;
+    }
+    .msg.ok {
+      background: rgba(46,125,82,0.08);
+      border-left: 3px solid var(--green-brand);
+      color: var(--green-mid);
+      display: flex;
+    }
+
+    /* Footer del form */
+    .form-footer {
+      padding: 20px 36px 24px;
+      border-top: 1px solid var(--fog);
+    }
+    .footer-cert {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .cert-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--green-pale);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .cert-txt { font-size: 11px; color: var(--mist); line-height: 1.5; }
+    .cert-txt strong { display: block; font-size: 11px; font-weight: 600; color: var(--slate); }
+
+    .legal-note {
+      font-size: 10px;
+      color: var(--silver);
+      line-height: 1.6;
+      border-top: 1px solid var(--fog);
+      padding-top: 12px;
+    }
+
+    /* Spinner */
+    .spin {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spn .65s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spn { to { transform: rotate(360deg) } }
+
+    /* Animaciones de entrada */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fup .5s ease forwards;
+    }
+    @keyframes fup { to { opacity:1; transform:translateY(0) } }
+    .d1 { animation-delay:.1s }
+    .d2 { animation-delay:.2s }
+    .d3 { animation-delay:.3s }
+    .d4 { animation-delay:.4s }
+    .d5 { animation-delay:.5s }
+
+    /* Responsive */
+    @media (max-width: 860px) {
+      .left { display: none; }
+      .right { width: 100%; }
+    }
+    @media (max-width: 480px) {
+      .form-body { padding: 28px 24px 24px; }
+      .form-footer { padding: 16px 24px 20px; }
+      .right-top { padding: 16px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ═══════════════════════════════════════
+       PANEL IZQUIERDO — Identidad del sistema
+  ════════════════════════════════════════ -->
+  <div class="left">
+    <div class="left-bg"></div>
+    <div class="topo-lines"></div>
+    <div class="topo-lines-2"></div>
+
+    <!-- Puntos de datos animados estilo GIS -->
+    <div class="dots-layer">
+      <div class="dot-node" style="width:8px;height:8px;top:28%;left:34%;animation-delay:0s"></div>
+      <div class="dot-node" style="width:6px;height:6px;top:45%;left:55%;animation-delay:.8s"></div>
+      <div class="dot-node" style="width:10px;height:10px;top:62%;left:28%;animation-delay:1.6s"></div>
+      <div class="dot-node" style="width:7px;height:7px;top:38%;left:70%;animation-delay:2.4s"></div>
+      <div class="dot-node" style="width:5px;height:5px;top:72%;left:60%;animation-delay:.4s"></div>
+      <div class="dot-node" style="width:9px;height:9px;top:20%;left:58%;animation-delay:1.2s"></div>
+      <div class="dot-node" style="width:6px;height:6px;top:80%;left:42%;animation-delay:2s"></div>
+    </div>
+
+    <!-- Líneas de conexión SVG -->
+    <svg class="connections" xmlns="http://www.w3.org/2000/svg">
+      <line x1="34%" y1="28%" x2="55%" y2="45%" stroke="rgba(76,175,125,0.12)" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="55%" y1="45%" x2="28%" y2="62%" stroke="rgba(76,175,125,0.1)" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="55%" y1="45%" x2="70%" y2="38%" stroke="rgba(76,175,125,0.1)" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="58%" y1="20%" x2="70%" y2="38%" stroke="rgba(76,175,125,0.08)" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="28%" y1="62%" x2="42%" y2="80%" stroke="rgba(76,175,125,0.08)" stroke-width="1" stroke-dasharray="4 4"/>
+      <line x1="60%" y1="72%" x2="70%" y2="38%" stroke="rgba(76,175,125,0.07)" stroke-width="1" stroke-dasharray="4 4"/>
+    </svg>
+
+    <div class="left-content">
+      <!-- Header institucional -->
+      <div class="inst-header">
+        <div class="inst-logo">🌿</div>
+        <div class="inst-names">
+          <div class="inst-org">Corporación Biocomercio Sostenible</div>
+          <div class="inst-system">Sistema de Información Territorial · SIT-APS</div>
+        </div>
+      </div>
+
+      <!-- Hero -->
+      <div class="hero-block">
+        <div class="sys-tag">
+          <span class="tag-dot"></span>
+          Sistema activo
+        </div>
+
+        <h1 class="hero-title">
+          Geoportal
+          <span class="aps-accent">APS</span>
+          <span class="sub-word">Colombia</span>
+        </h1>
+
+        <p class="hero-desc">
+          Plataforma geoespacial institucional para la gestión de predios, usos de suelo y reportes de campo en tiempo real. Área de Producción Sostenible — Caquetá, Colombia.
+        </p>
+
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-cell">
+            <div class="stat-num" id="st-predios">—</div>
+            <div class="stat-lbl">Predios<br>registrados</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-num" id="st-has">—</div>
+            <div class="stat-lbl">Hectáreas<br>en sistema</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-num" id="st-usos">—</div>
+            <div class="stat-lbl">Usos de<br>suelo</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-num" id="st-reportes">—</div>
+            <div class="stat-lbl">Reportes<br>APS</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Módulos -->
+      <div class="modules-bar">
+        <div class="mod-chip active-mod"><span class="mi">🗺️</span> Mapa</div>
+        <div class="mod-chip active-mod"><span class="mi">✏️</span> Digitalización</div>
+        <div class="mod-chip"><span class="mi">📍</span> Campo</div>
+        <div class="mod-chip"><span class="mi">📊</span> Reportes</div>
+        <div class="mod-chip"><span class="mi">📶</span> Offline</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       PANEL DERECHO — Acceso al sistema
+  ════════════════════════════════════════ -->
+  <div class="right">
+    <div class="right-top">
+      <span class="rt-label">Acceso al sistema</span>
+      <span class="rt-version">v 2.1</span>
+    </div>
+
+    <div class="form-body">
+      <div class="form-greeting fade-up d1">Bienvenido</div>
+      <div class="form-sub fade-up d2">Ingresa tus credenciales institucionales para acceder al Geoportal APS</div>
+
+      <!-- Tabs -->
+      <div class="tabs fade-up d3">
+        <button class="tab active" onclick="switchTab('login')">Ingresar</button>
+        <button class="tab" onclick="switchTab('register')">Registrarse</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="fsec-login" class="fsect show fade-up d4">
+        <div id="msg-login" class="msg"></div>
+        <div class="fg">
+          <label class="fl">Correo electrónico</label>
+          <input id="login-email" class="fi" type="email" placeholder="usuario@correo.com" autocomplete="email">
+        </div>
+        <div class="fg">
+          <label class="fl">Contraseña</label>
+          <input id="login-pass" class="fi" type="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn-main fade-up d5" id="btn-login" onclick="doLogin()">
+          Ingresar al sistema →
+        </button>
+        <div class="or-div">acceso alternativo</div>
+        <button class="btn-guest" onclick="doGuest()">
+          <span>👁</span> Visitante — solo lectura
+        </button>
+      </div>
+
+      <!-- REGISTRO -->
+      <div id="fsec-register" class="fsect">
+        <div id="msg-register" class="msg"></div>
+        <div class="fg">
+          <label class="fl">Correo electrónico</label>
+          <input id="reg-email" class="fi" type="email" placeholder="usuario@correo.com">
+        </div>
+        <div class="fg">
+          <label class="fl">Contraseña</label>
+          <input id="reg-pass" class="fi" type="password" placeholder="Mínimo 8 caracteres">
+        </div>
+        <div class="fg">
+          <label class="fl">Confirmar contraseña</label>
+          <input id="reg-pass2" class="fi" type="password" placeholder="Repite tu contraseña">
+        </div>
+        <button class="btn-main" id="btn-register" onclick="doRegister()">
+          Crear cuenta →
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer del formulario -->
+    <div class="form-footer">
+      <div class="footer-cert">
+        <div class="cert-icon">🔒</div>
+        <div class="cert-txt">
+          <strong>Plataforma segura</strong>
+          Autenticación institucional · Datos cifrados en tránsito y reposo
+        </div>
+      </div>
+      <div class="footer-cert">
+        <div class="cert-icon">📋</div>
+        <div class="cert-txt">
+          <strong>Datos bajo estándares IGAC</strong>
+          Sistema de información georreferenciada conforme a normativa colombiana
+        </div>
+      </div>
+      <div class="legal-note">
+        Geoportal APS v2.1 · Corporación Biocomercio Sostenible · Área de Producción Sostenible — Caquetá, Colombia. El acceso a esta plataforma está restringido a usuarios autorizados. Los datos geoespaciales son de uso institucional exclusivo.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const SUPABASE_URL      = "https://nyqzlkfphssodbsgeeob.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55cXpsa2ZwaHNzb2Ric2dlZW9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMzg5ODAsImV4cCI6MjA4OTcxNDk4MH0.D0mv8NNf3w362u1Q9PRcy9H_vO46u6jIva3SpMaKLng";
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  /* Redirige si ya hay sesión */
+  sb.auth.getSession().then(({data}) => {
+    if (data?.session) window.location.replace('app.html');
+  }).catch(()=>{});
+
+  /* Cargar stats desde Supabase */
+  async function cargarStats() {
+    try {
+      const [{ count: cp }, { count: cu }, { count: cr }] = await Promise.all([
+        sb.from('predios').select('*', { count:'exact', head:true }),
+        sb.from('usos_suelo').select('*', { count:'exact', head:true }),
+        sb.from('reportes').select('*', { count:'exact', head:true }),
+      ]);
+      // Hectáreas totales
+      const { data: hasData } = await sb.from('predios').select('has');
+      const totalHas = hasData ? hasData.reduce((s,r)=>s+(parseFloat(r.has)||0),0) : 0;
+
+      animCount('st-predios', cp || 0);
+      animCount('st-has', Math.round(totalHas));
+      animCount('st-usos', cu || 0);
+      animCount('st-reportes', cr || 0);
+    } catch(e) {
+      ['st-predios','st-has','st-usos','st-reportes'].forEach(id => {
+        document.getElementById(id).textContent = '—';
+      });
+    }
+  }
+
+  function animCount(id, target) {
+    const el = document.getElementById(id);
+    if (!el || target === 0) { if(el) el.textContent = '0'; return; }
+    let cur = 0;
+    const step = Math.ceil(target / 40);
+    const iv = setInterval(() => {
+      cur = Math.min(cur + step, target);
+      el.textContent = cur.toLocaleString('es-CO');
+      if (cur >= target) clearInterval(iv);
+    }, 30);
+  }
+
+  cargarStats();
+
+  /* Tabs */
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach((b,i) =>
+      b.classList.toggle('active', (i===0)===(tab==='login'))
+    );
+    document.getElementById('fsec-login').classList.toggle('show', tab==='login');
+    document.getElementById('fsec-register').classList.toggle('show', tab==='register');
+  }
+
+  function showMsg(id, type, text) {
+    const el = document.getElementById(id);
+    el.className = 'msg ' + type;
+    el.textContent = (type === 'err' ? '⚠ ' : '✓ ') + text;
+  }
+  function clearMsg(id) {
+    const el = document.getElementById(id);
+    el.className = 'msg';
+    el.textContent = '';
+  }
+  function setLoading(id, on) {
+    const b = document.getElementById(id);
+    b.disabled = on;
+    const labels = {
+      'btn-login': 'Ingresar al sistema →',
+      'btn-register': 'Crear cuenta →'
+    };
+    b.innerHTML = on
+      ? '<span class="spin"></span>Procesando...'
+      : labels[id];
+  }
+
+  async function doLogin() {
+    clearMsg('msg-login');
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-pass').value;
+    if (!email || !pass) { showMsg('msg-login','err','Completa todos los campos.'); return; }
+    setLoading('btn-login', true);
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    setLoading('btn-login', false);
+    if (error) showMsg('msg-login', 'err', error.message);
+    else {
+      showMsg('msg-login', 'ok', 'Sesión iniciada. Cargando sistema...');
+      setTimeout(() => window.location.replace('app.html'), 900);
+    }
+  }
+
+  async function doRegister() {
+    clearMsg('msg-register');
+    const email = document.getElementById('reg-email').value.trim();
+    const pass  = document.getElementById('reg-pass').value;
+    const pass2 = document.getElementById('reg-pass2').value;
+    if (!email || !pass) { showMsg('msg-register','err','Completa todos los campos.'); return; }
+    if (pass !== pass2)  { showMsg('msg-register','err','Las contraseñas no coinciden.'); return; }
+    if (pass.length < 8) { showMsg('msg-register','err','Mínimo 8 caracteres.'); return; }
+    setLoading('btn-register', true);
+    const { data: regData, error } = await sb.auth.signUp({ email, password: pass });
+    setLoading('btn-register', false);
+    if (error) showMsg('msg-register', 'err', error.message);
+    else if (regData?.session) {
+      showMsg('msg-register', 'ok', 'Cuenta creada. Cargando sistema...');
+      setTimeout(() => window.location.replace('app.html'), 900);
+    } else {
+      showMsg('msg-register', 'ok', 'Cuenta creada. Revisa tu correo para confirmar el acceso.');
+    }
+  }
+
+  function doGuest() {
+    sessionStorage.setItem('guest','1');
+    window.location.replace('app.html');
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      if (document.getElementById('fsec-login').classList.contains('show')) doLogin();
+      else doRegister();
+    }
+  });
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .catch(e => console.warn('[APS SW]', e));
+    });
+  }
+</script>
+</body>
+</html>
