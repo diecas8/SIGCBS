@@ -81,7 +81,8 @@ self.addEventListener('fetch', event => {
         cache.match(event.request).then(cached => {
           if (cached) return cached;
           return fetch(event.request).then(response => {
-            cache.put(event.request, response.clone());
+            const copia = response.clone();
+            cache.put(event.request, copia);
             return response;
           }).catch(() => cached || new Response('', { status: 503 }));
         })
